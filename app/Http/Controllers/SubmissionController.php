@@ -56,21 +56,87 @@ class SubmissionController extends Controller
 
     public function grade(Request $request, Submission $submission): RedirectResponse
     {
-        // TODO 5a (grade): Cek apakah dosen adalah pengampu mata kuliah, validasi nilai (0-100) & catatan_dosen, lalu update submission.
-        // 1. Pastikan $submission->assignment->course->dosen_id === Auth::id(), jika tidak abort(403).
-        // 2. Validasi input 'nilai' (required|integer|min:0|max:100) dan 'catatan_dosen' (nullable|string|max:1000).
-        // 3. Simpan perubahan menggunakan $submission->update(...) dan redirect back() dengan pesan sukses.
+        // TODO 5a (grade): hanya dosen pengampu yang boleh menilai
+        if ($submission->assignment->course->dosen_id !== Auth::id()) {
+            abort(403, 'Akses ditolak. Anda bukan dosen pengampu mata kuliah tugas ini.');
+        }
 
-        abort(501, 'Fitur belum diimplementasikan');
+        $validated = $request->validate([
+            'nilai' => ['required', 'integer', 'min:0', 'max:100'],
+            'catatan_dosen' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'nilai.required' => 'Nilai wajib diisi.',
+            'nilai.integer' => 'Nilai harus berupa angka bulat.',
+            'nilai.min' => 'Nilai minimal 0.',
+            'nilai.max' => 'Nilai maksimal 100.',
+            'catatan_dosen.max' => 'Catatan dosen maksimal 1000 karakter.',
+        ]);
+
+        $submission->update([
+            'nilai' => $validated['nilai'],
+            'catatan_dosen' => $validated['catatan_dosen'] ?? null,
+        ]);
+
+        return back()->with('success', 'Nilai untuk ' . $submission->user->name . ' berhasil disimpan.');
     }
 
     public function exportCsv(Assignment $assignment): StreamedResponse
     {
-        // TODO 5b (exportCsv): Cek kepemilikan dosen, lalu gunakan response()->streamDownload() dan fputcsv() untuk mengunduh data nilai mahasiswa.
-        // 1. Pastikan $assignment->course->dosen_id === Auth::id(), jika tidak abort(403).
-        // 2. Muat relasi course.approvedStudents dan submissions dari $assignment.
-        // 3. Kembalikan response()->streamDownload(...) yang menulis header & baris CSV menggunakan fopen('php://output', 'w') dan fputcsv().
+        // TODO 5b (exportCsv): hanya dosen pengampu yang boleh mengekspor
+        if ($assignment->course->dosen_id !== Auth::id()) {
+            abort(403, 'Akses ditolak. Anda bukan dosen pengampu mata kuliah tugas ini.');
+        }
 
-        abort(501, 'Fitur belum diimplementasikan');
+        $assignment->load(['course.approvedStudents', 'submissions']);
+
+        $course = $assignment->course;
+        $students = $course->approvedStudents->sortBy('name')->values();
+        $submissions = $assignment->submissions->keyBy('user_id');
+        $average = $submissions->whereNotNull('nilai')->avg('nilai');
+
+        $filename = 'rekap-nilai-' . $course->kode_mk . '-tugas-' . $assignment->id . '.csv';
+
+        // Cegah CSV/formula injection pada sel teks bebas (Excel menganggap awalan = + - @ sebagai rumus)
+        $safe = static function (?string $value): string {
+            $value = (string) $value;
+            return preg_match('/^[=+\-@]/', $value) ? "'" . $value : $value;
+        };
+
+        return response()->streamDownload(function () use ($assignment, $course, $students, $submissions, $average, $safe) {
+            $out = fopen('php://output', 'w');
+            $d = ';'; // pemisah titik koma: terbaca rapi di Excel dengan regional Indonesia
+
+            fwrite($out, "\xEF\xBB\xBF"); // BOM UTF-8 agar karakter terbaca benar di Excel
+
+            fputcsv($out, ['Mata Kuliah', $course->kode_mk . ' - ' . $course->nama_mk], $d);
+            fputcsv($out, ['Semester', $course->semester], $d);
+            fputcsv($out, ['Tugas', $assignment->judul], $d);
+            fputcsv($out, [], $d);
+
+            fputcsv($out, ['No', 'Nama Mahasiswa', 'NIM', 'Email', 'Status Pengumpulan', 'Waktu Pengumpulan', 'Nilai', 'Status Nilai', 'Catatan Dosen'], $d);
+
+            foreach ($students as $i => $student) {
+                $sub = $submissions->get($student->id);
+
+                fputcsv($out, [
+                    $i + 1,
+                    $safe($student->name),
+                    $student->nomor_induk ?? '-',
+                    $student->email,
+                    $sub ? 'Sudah Mengumpulkan' : 'Belum Mengumpulkan',
+                    $sub ? ($sub->submitted_at ?? $sub->updated_at)->format('d-m-Y H:i') : '-',
+                    $sub && $sub->nilai !== null ? $sub->nilai : '-',
+                    $sub ? $sub->status_nilai : '-',
+                    $sub && $sub->catatan_dosen ? $safe($sub->catatan_dosen) : '-',
+                ], $d);
+            }
+
+            fputcsv($out, [], $d);
+            fputcsv($out, ['', '', '', '', '', 'Rata-rata Nilai', $average !== null ? number_format($average, 1, ',', '') : '-'], $d);
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 }

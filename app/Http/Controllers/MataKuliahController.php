@@ -38,7 +38,27 @@ class MataKuliahController extends Controller
         }
 
         // TODO 4: Tambahkan logika filter berdasarkan parameter 'semester' dan pengurutan berdasarkan parameter 'sort' (nama_asc, nama_desc, sks_desc, sks_asc)
-        $query->orderBy('nama_mk');
+        $semester = $request->query('semester');
+        $sort = $request->query('sort', 'nama_asc');
+
+        if ($semester) {
+            $query->where('semester', $semester);
+        }
+
+        switch ($sort) {
+            case 'nama_desc':
+                $query->orderBy('nama_mk', 'desc');
+                break;
+            case 'sks_desc':
+                $query->orderBy('sks', 'desc')->orderBy('nama_mk', 'asc');
+                break;
+            case 'sks_asc':
+                $query->orderBy('sks', 'asc')->orderBy('nama_mk', 'asc');
+                break;
+            default: // nama_asc
+                $query->orderBy('nama_mk', 'asc');
+                break;
+        }
 
         $courses = $query->with('dosen')
             ->withCount([
@@ -49,7 +69,7 @@ class MataKuliahController extends Controller
             ->paginate(9)
             ->withQueryString();
 
-        $semesters = MataKuliah::select('semester')->distinct()->pluck('semester');
+        $semesters = MataKuliah::select('semester')->distinct()->orderBy('semester', 'desc')->pluck('semester');
 
         return view('courses.index', compact('courses', 'semesters'));
     }

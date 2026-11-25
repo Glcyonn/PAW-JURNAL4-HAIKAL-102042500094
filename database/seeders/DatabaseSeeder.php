@@ -63,5 +63,85 @@ class DatabaseSeeder extends Seeder
         );
 
         // TODO 8: Tambahkan minimal 2 mata kuliah lagi dengan semester berbeda, 1 mahasiswa tambahan, 2 tugas, dan contoh data submission
+     // 1 Mahasiswa Tambahan
+        $mahasiswa2 = User::updateOrCreate(
+            ['email' => 'siti@celoe.test'],
+            [
+                'name' => 'Siti Nurhaliza',
+                'password' => Hash::make('mahasiswa123'),
+                'role' => 'mahasiswa',
+                'nomor_induk' => '1301210002',
+            ]
+        );
+
+        // 2 Mata Kuliah Tambahan 
+        $course2 = MataKuliah::updateOrCreate(
+            ['kode_mk' => 'IF204'],
+            [
+                'nama_mk' => 'Basis Data Relasional',
+                'deskripsi' => 'Mata kuliah perancangan basis data relasional, normalisasi, ERD, dan optimasi query SQL.',
+                'sks' => 3,
+                'semester' => 'Ganjil 2026/2027',
+                'dosen_id' => $dosen->id,
+            ]
+        );
+
+        $course3 = MataKuliah::updateOrCreate(
+            ['kode_mk' => 'IF402'],
+            [
+                'nama_mk' => 'Arsitektur Layanan Awan',
+                'deskripsi' => 'Mata kuliah tentang arsitektur cloud computing, model layanan IaaS/PaaS/SaaS, dan deployment aplikasi.',
+                'sks' => 2,
+                'semester' => 'Genap 2026/2027',
+                'dosen_id' => $dosen->id,
+            ]
+        );
+
+        // Pendaftaran mahasiswa (status approved)
+        $course1->students()->syncWithoutDetaching([
+            $mahasiswa2->id => ['status' => 'approved'],
+        ]);
+        $course2->students()->syncWithoutDetaching([
+            $mahasiswa1->id => ['status' => 'approved'],
+        ]);
+
+        // 2 Tugas Perkuliahan
+        $assignment1 = Assignment::updateOrCreate(
+            ['course_id' => $course1->id, 'judul' => 'Tugas 1: Implementasi Middleware & Eloquent ORM'],
+            [
+                'deskripsi' => 'Jelaskan cara kerja Route Middleware untuk proteksi peran pengguna serta implementasi relasi Eloquent pada studi kasus CeLOE LMS.',
+                'deadline' => now()->addDays(5),
+            ]
+        );
+
+        Assignment::updateOrCreate(
+            ['course_id' => $course2->id, 'judul' => 'Tugas 1: Normalisasi Basis Data'],
+            [
+                'deskripsi' => 'Lakukan normalisasi 1NF sampai 3NF pada studi kasus sistem akademik yang diberikan, lengkap dengan ERD akhirnya.',
+                'deadline' => now()->addDays(10),
+            ]
+        );
+
+        //Contoh Pengumpulan Tugas (1 sudah dinilai, 1 belum dinilai)
+        Submission::updateOrCreate(
+            ['assignment_id' => $assignment1->id, 'user_id' => $mahasiswa1->id],
+            [
+                'jawaban' => 'Middleware di Laravel berfungsi menyaring HTTP request sebelum mencapai controller. Pada CeLOE LMS, RoleMiddleware memeriksa apakah role pengguna sesuai dengan parameter route.',
+                'submitted_at' => now()->subDays(1),
+                'nilai' => 88,
+                'catatan_dosen' => 'Penjelasan sangat terstruktur dan tepat sasaran. Pertahankan!',
+            ]
+        );
+
+        Submission::updateOrCreate(
+            ['assignment_id' => $assignment1->id, 'user_id' => $mahasiswa2->id],
+            [
+                'jawaban' => 'Eloquent ORM memudahkan interaksi dengan database memakai model dan relasi seperti hasMany, belongsTo, dan belongsToMany.',
+                'submitted_at' => now()->subHours(10),
+                'nilai' => null,
+                'catatan_dosen' => null,
+            ]
+        ); 
+
     }
 }
